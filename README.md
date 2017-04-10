@@ -581,10 +581,99 @@ a ? (b = c) : d()
 下面我们来说说生命周期：即pre开头的生命周期在没有前缀的script前执行，post前缀最后执行，即`pretest test posttest`这样的顺序来执行。详见[npm scripts](https://docs.npmjs.com/misc/scripts)
 
 
+### 5.与package.json中script部分相关的一些工具
+如果你耐心的读到这里，那么我下面会介绍一些很好用的与script[执行相关的库](http://substack.net/task_automation_with_npm_run)。这个文章提出了下面的script对象：
+```js
+{
+  "name": "my-silly-app",
+  "version": "1.2.3",
+  "private": true,
+  "dependencies": {
+    "browserify": "~2.35.2",
+    "uglifyjs": "~2.3.6"
+  },
+  "devDependencies": {
+    "watchify": "~0.1.0",
+    "catw": "~0.0.1",
+    "tap": "~0.4.4"
+  },
+  "scripts": {
+    "build-js": "browserify browser/main.js | uglifyjs -mc > static/bundle.js",
+    //管道符先打包后压缩
+    "build-css":  "cat static/pages/*.css tabs/*/*.css > static/bundle.css",
+    //合并css,cat来自于shell命令行而非库。cat myfile1.txt myfile2.txt > myfile.txt
+    "build": "npm run build-js && npm run build-css",
+    //build的时候同时处理css与js
+    "watch-js": "watchify browser/main.js -o static/bundle.js -dv",
+    //加上-dv表示verbose显示更多打包信息,-o表示outputFile
+    "watch-css": "catw static/pages/*.css tabs/*/*.css -o static/bundle.css -v",
+    //和shell的cat命令一样，但是会监听文件变化，-o指定输出文件，而-v表示输出verbose
+    "watch": "npm run watch-js & npm run watch-css",
+    //注意：如果是`&`那么表示并行子任务，而`&&`表示序列化任务
+    "start": "node server.js",
+    "test": "tap test/*.js"
+    //A TAP test framework for Node.js. Detail:http://www.node-tap.org/basics/
+  }
+}
+```
+同时作者也指出，如果你的`&&`连接比较多，那么建议使用批处理命令放在`./bin`目录下，可以是bash，node，或者perl书写。只要添加如下内容：
+```bash
+#!/bin/bash
+(cd site/main; browserify browser/main.js | uglifyjs -mc > static/bundle.js)
+(cd site/xyz; browserify browser.js > static/bundle.js)
+```
+而在package.json中进行如下配置：
+```js
+"build-js": "bin/build.sh"
+```
+其中很多工具在参考文件中你也可以看到！下面给出几个script的例子：
 
+[nsp的例子](https://github.com/liangklfang/nsp)：
+```json
+ "scripts": {
+    "lint": "eslint . bin/nsp",
+    "setup-offline": "curl -sS https://api.nodesecurity.io/advisories -o advisories.json",
+    //curl是shell命令，表示从某一个server下载资源(支持离线)
+    "test": "lab -a code -t 100 -I Reflect",
+    //lab是一个nodejs的测试框架
+    "nsp": "bin/nsp check",
+    //nsp用于对node security platform中已知的安全问题进行处理
+    "shrinkwrap": "npm shrinkwrap && shrinkydink"
+    //其中shrinkydink用于对shrinkwrap.json进行处理
+  }
+```
+[webpack的例子](https://github.com/liangklfang/webpack)
+```json
+"scripts": {
+    "test": "mocha --harmony --check-leaks",
+    "travis:test": "npm run cover -- --report lcovonly",
+    "travis:lint": "npm run lint-files && npm run nsp",
+    "appveyor": "node --max_old_space_size=4096 node_modules\\mocha\\bin\\mocha --harmony",
+    "build:examples": "cd examples && node buildAll.js",
+    "pretest": "npm run lint-files",
+    "lint-files": "npm run lint && npm run beautify-lint",
+    "lint": "eslint lib bin hot buildin test/**/webpack.config.js test/binCases/**/test.js examples/**/webpack.config.js",
+    "beautify-lint": "beautify-lint 'lib/**/*.js' 'hot/**/*.js' 'bin/**/*.js' 'benchmark/*.js' 'test/*.js'",
+    "nsp": "nsp check --output summary",
+    "cover": "node --harmony ./node_modules/.bin/istanbul cover -x '**/*.runtime.js' node_modules/mocha/bin/_mocha",
+    "publish-patch": "npm run lint && npm run beautify-lint && mocha && npm version patch && git push && git push --tags && npm publish"
+  }
+```
+大部分这里的代码都已经说过了，不过其中的beautify-lint以及nsp建议还是看一下!而且`publish-patch`都是采用`&&`来链接的，也就是顺序执行的！
 
-
-
+[React-Demo](https://github.com/liangklfang/universal-react-demo)的例子：
+```json
+"scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "webpack-dev-server --hot --progress --host 0.0.0.0 --port 8000 --config webpack.client.config.js",
+    "server-build": "export NODE_ENV=prod; webpack -p --progress --config webpack.server.config.js",
+    //export来自于shell命令，必须在git bash而不是cmd中运行，建议使用cross-env
+    "client-build": "export NODE_ENV=prod; webpack -p --progress --config webpack.client.config.js",
+    //export来自于shell命令，必须在git bash而不是cmd中运行,建议使用cross-env
+    "start": "concurrently \"npm run client-build\" \"npm run server-build\" && node build/server.js"
+  }
+```
+这里主要看一下concurrently与shell的export命令
 
 
 参考资料：
@@ -598,3 +687,17 @@ a ? (b = c) : d()
 [Linux下用户组、文件权限详解](http://www.cnblogs.com/123-/p/4189072.html)
 
 [npm-shrinkwrap](https://docs.npmjs.com/cli/shrinkwrap)
+
+[Task automation with npm run](http://substack.net/task_automation_with_npm_run)
+
+[cat](https://www.npmjs.com/package/cat)
+
+[nsp](https://github.com/liangklfang/nsp)
+
+[beautify-link](https://github.com/liangklfang/beautify-lint)
+
+[常见node攻击](https://nodesecurity.io/advisories/?page=1)
+
+[shell的export命令](https://ss64.com/bash/export.html)
+
+[concurrently](https://github.com/liangklfang/concurrently)
